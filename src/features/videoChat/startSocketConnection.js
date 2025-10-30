@@ -1,9 +1,13 @@
 import { io } from 'socket.io-client';
 
 export function startSocketConnection(callbacks) {
-  const socket = io({
-    transports: ['websocket', 'polling']
-  });
+  const socketConfig = {
+    transports: ['websocket', 'polling'],
+    secure: typeof window !== 'undefined' && window.location.protocol === 'https:',
+    rejectUnauthorized: false
+  };
+  
+  const socket = io(socketConfig);
 
   socket.emit('join-room', 'video');
 
