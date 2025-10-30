@@ -571,3 +571,30 @@
   cursor: not-allowed;
   transform: none;
 }
+
+/* FIX: Delivery checkmark for sent messages */
+.delivery-check {
+  color: #4CAF50;
+  font-size: 12px;
+  margin-left: 4px;
+  opacity: 0.8;
+  font-weight: bold;
+}
+
+/* FIX: Rate limit warning animation */
+.message.system {
+  font-style: italic;
+  opacity: 0.9;
+  animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 0.9;
+    transform: translateY(0);
+  }
+}
