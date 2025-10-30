@@ -1,4 +1,5 @@
 import socketState from '../socketState.js';
+import { v4 as uuidv4 } from 'uuid';
 
 export function calculateCommonInterests(interests1, interests2) {
   if (!interests1 || !interests2 || interests1.length === 0 || interests2.length === 0) {
@@ -68,20 +69,28 @@ export function findMatch(socket, io) {
       strangerProfile ? strangerProfile.interests : []
     );
     
+    const uniqueRoomId = uuidv4();
+    
     socketState.setPairing(socket.id, bestMatch.id);
     socketState.addRecentPartner(socket.id, bestMatch.id);
     socketState.addRecentPartner(bestMatch.id, socket.id);
     
+    socketState.createUniqueRoom(uniqueRoomId, socket, bestMatch);
+    socket.join(uniqueRoomId);
+    bestMatch.join(uniqueRoomId);
+    
     socket.emit('matched', { 
       strangerId: bestMatch.id,
+      roomId: uniqueRoomId,
       commonInterests: commonInterests
     });
     bestMatch.emit('matched', { 
       strangerId: socket.id,
+      roomId: uniqueRoomId,
       commonInterests: commonInterests
     });
     
-    console.log(`Matched: ${socket.id} <-> ${bestMatch.id}, Common interests: ${commonInterests.join(', ')}`);
+    console.log(`Matched: ${socket.id} <-> ${bestMatch.id} in room ${uniqueRoomId}, Common interests: ${commonInterests.join(', ')}`);
   } else {
     queue.push(socket);
     socket.emit('searching');
@@ -91,10 +100,14 @@ export function findMatch(socket, io) {
 
 export function disconnectPair(socketId, io) {
   const partnerId = socketState.removePairing(socketId);
+  const roomId = socketState.removeFromUniqueRoom(socketId);
   
   if (partnerId) {
     const partnerSocket = io.sockets.sockets.get(partnerId);
     if (partnerSocket) {
+      if (roomId) {
+        partnerSocket.leave(roomId);
+      }
       partnerSocket.emit('stranger-disconnected');
       console.log(`Partner ${partnerId} notified of disconnection, auto-matching...`);
       findMatch(partnerSocket, io);
