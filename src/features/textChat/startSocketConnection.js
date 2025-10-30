@@ -55,6 +55,16 @@ export function startSocketConnection(callbacks) {
     socket.on('report-failed', callbacks.onReportFailed);
   }
 
+  // FIX: Add message delivery acknowledgment listener
+  if (callbacks.onMessageDelivered) {
+    socket.on('message-delivered', callbacks.onMessageDelivered);
+  }
+
+  // FIX: Add rate limiting listener
+  if (callbacks.onMessageRateLimited) {
+    socket.on('message-rate-limited', callbacks.onMessageRateLimited);
+  }
+
   socket.emit('start-matching');
   console.log('Text chat socket connection started');
   
