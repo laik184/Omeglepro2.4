@@ -16,7 +16,9 @@ const io = new Server(httpServer, {
   pingInterval: 25000,
   upgradeTimeout: 30000,
   allowEIO3: true,
-  transports: ['websocket', 'polling']
+  transports: ['websocket', 'polling'],
+  allowUpgrades: true,
+  cookie: false
 });
 
 io.engine.on('connection_error', (err) => {
