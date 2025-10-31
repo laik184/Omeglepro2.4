@@ -67,6 +67,11 @@ function TextChat() {
       setIsSearching(true);
       setIsConnected(false);
       setStrangerTyping(false);
+    } else if (isSearching && socketRef.current) {
+      socketRef.current.emit('leave-room', 'text');
+      setIsSearching(false);
+      setStrangerTyping(false);
+      console.log('Stopped searching for partner');
     } else {
       setMessages([]);
       setIsSearching(true);
@@ -252,7 +257,14 @@ function TextChat() {
           <div className="connected-message">Connected! You can now start chatting.</div>
         )}
         {isSearching ? (
-          <div className="searching-message">Looking for someone you can chat with...</div>
+          <div className="searching-message">
+            <span className="connecting-text">Connecting</span>
+            <span className="connecting-dots">
+              <span className="dot"></span>
+              <span className="dot"></span>
+              <span className="dot"></span>
+            </span>
+          </div>
         ) : (
           <>
             {messages.map((msg, idx) => (
@@ -291,7 +303,7 @@ function TextChat() {
           ➤
         </button>
         <button className={`new-btn ${isConnected ? 'skip-btn' : ''}`} onClick={handleNewOrSkip}>
-          {isConnected ? '⏭ Skip' : '● New'}
+          {isConnected ? '⏭ Skip' : isSearching ? '⏹ Stop' : '🔄 New'}
         </button>
       </div>
 

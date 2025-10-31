@@ -152,30 +152,55 @@ function VideoChat() {
 
       const isInitiator = socket.id > strangerId;
       
-      const stunServers = [
+      const turnServers = [
         [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' }
+          {
+            urls: 'turn:openrelay.metered.ca:80',
+            username: 'openrelayproject',
+            credential: 'openrelayproject'
+          },
+          {
+            urls: 'turn:openrelay.metered.ca:443',
+            username: 'openrelayproject',
+            credential: 'openrelayproject'
+          },
+          {
+            urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+            username: 'openrelayproject',
+            credential: 'openrelayproject'
+          }
         ],
         [
-          { urls: 'stun:stun2.l.google.com:19302' },
-          { urls: 'stun:stun3.l.google.com:19302' }
+          {
+            urls: 'turn:openrelay.metered.ca:80',
+            username: 'openrelayproject',
+            credential: 'openrelayproject'
+          },
+          {
+            urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+            username: 'openrelayproject',
+            credential: 'openrelayproject'
+          }
         ],
         [
-          { urls: 'stun:stun4.l.google.com:19302' },
-          { urls: 'stun:global.stun.twilio.com:3478' }
+          {
+            urls: 'turn:openrelay.metered.ca:443',
+            username: 'openrelayproject',
+            credential: 'openrelayproject'
+          }
         ]
       ];
 
-      const currentStunSet = stunServers[Math.min(retryCount, stunServers.length - 1)];
-      console.log(`Creating peer connection (attempt ${retryCount + 1}) with STUN servers:`, currentStunSet);
+      const currentTurnSet = turnServers[Math.min(retryCount, turnServers.length - 1)];
+      console.log(`Creating peer connection (attempt ${retryCount + 1}) with TURN relay servers (IP privacy protected):`, currentTurnSet);
 
       const peer = new SimplePeer({
         initiator: isInitiator,
         trickle: true,
         stream: streamRef.current,
         config: {
-          iceServers: currentStunSet,
+          iceServers: currentTurnSet,
+          iceTransportPolicy: 'relay',
           iceCandidatePoolSize: 10
         }
       });
@@ -355,8 +380,14 @@ function VideoChat() {
         peerRef.current = null;
       }
       
-      if (strangerVideoRef.current) {
+      if (strangerVideoRef.current && strangerVideoRef.current.srcObject) {
+        const stream = strangerVideoRef.current.srcObject;
+        stream.getTracks().forEach(track => {
+          track.stop();
+          console.log('Stopped remote media track:', track.kind);
+        });
         strangerVideoRef.current.srcObject = null;
+        console.log('Remote video element cleaned up and all tracks stopped');
       }
       
       if (qualityManagerRef.current) {
@@ -391,8 +422,14 @@ function VideoChat() {
         peerRef.current = null;
       }
       
-      if (strangerVideoRef.current) {
+      if (strangerVideoRef.current && strangerVideoRef.current.srcObject) {
+        const stream = strangerVideoRef.current.srcObject;
+        stream.getTracks().forEach(track => {
+          track.stop();
+          console.log('Stopped remote media track:', track.kind);
+        });
         strangerVideoRef.current.srcObject = null;
+        console.log('Remote video element cleaned up and all tracks stopped');
       }
       
       if (qualityManagerRef.current) {
@@ -430,7 +467,12 @@ function VideoChat() {
           peerRef.current.destroy();
           peerRef.current = null;
         }
-        if (strangerVideoRef.current) {
+        if (strangerVideoRef.current && strangerVideoRef.current.srcObject) {
+          const stream = strangerVideoRef.current.srcObject;
+          stream.getTracks().forEach(track => {
+            track.stop();
+            console.log('Stopped remote media track on error:', track.kind);
+          });
           strangerVideoRef.current.srcObject = null;
         }
       } else if (data.code === 'NO_PARTNER') {
@@ -539,6 +581,10 @@ function VideoChat() {
       setMessages([]);
       setIsSearching(true);
       setIsConnected(false);
+    } else if (isSearching && socketRef.current) {
+      socketRef.current.emit('leave-room', 'video');
+      setIsSearching(false);
+      console.log('Stopped searching for partner');
     } else {
       setMessages([]);
       setIsSearching(true);
@@ -679,10 +725,15 @@ function VideoChat() {
       console.log('Peer connection destroyed');
     }
 
-    // Clear remote video
-    if (strangerVideoRef.current) {
+    // Clear remote video and stop all media tracks
+    if (strangerVideoRef.current && strangerVideoRef.current.srcObject) {
+      const stream = strangerVideoRef.current.srcObject;
+      stream.getTracks().forEach(track => {
+        track.stop();
+        console.log('Stopped remote media track on endCall:', track.kind);
+      });
       strangerVideoRef.current.srcObject = null;
-      console.log('Remote video cleared');
+      console.log('Remote video cleared and all tracks stopped');
     }
 
     // Notify server
@@ -822,8 +873,14 @@ function VideoChat() {
       <div className="video-chat-bottom">
         {isSearching && (
           <div className="searching-messages">
-            <div className="searching-message">Looking for people online</div>
-            <div className="searching-message">Looking for people online</div>
+            <div className="connecting-indicator">
+              <span className="connecting-text">Connecting</span>
+              <span className="connecting-dots">
+                <span className="dot"></span>
+                <span className="dot"></span>
+                <span className="dot"></span>
+              </span>
+            </div>
           </div>
         )}
 
@@ -862,7 +919,7 @@ function VideoChat() {
             ➤
           </button>
           <button className="video-new-btn" onClick={handleNewOrSkip}>
-            {isConnected ? '⏭ Skip' : '● New'}
+            {isConnected ? '⏭ Skip' : isSearching ? '⏹ Stop' : '🔄 New'}
           </button>
         </div>
       </div>
