@@ -38,7 +38,29 @@ function VideoChat() {
 
   useEffect(() => {
     const startCamera = async () => {
+      const isSecure = window.location.protocol === 'https:';
+      const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      
+      if (!isSecure && !isLocalhost) {
+        const httpsError = 'WebRTC requires HTTPS connection. Please access this site via HTTPS.';
+        console.error(httpsError);
+        setCameraError(httpsError);
+        alert(httpsError);
+        setTimeout(() => navigate('/'), 2000);
+        return;
+      }
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        const browserError = 'Your browser does not support camera access. Please use a modern browser like Chrome, Firefox, or Edge.';
+        console.error(browserError);
+        setCameraError(browserError);
+        alert(browserError);
+        setTimeout(() => navigate('/'), 2000);
+        return;
+      }
+
       try {
+        console.log('Requesting camera and microphone access...');
         const stream = await navigator.mediaDevices.getUserMedia({ 
           video: { 
             width: { ideal: 1280 },
@@ -48,6 +70,7 @@ function VideoChat() {
           audio: true 
         });
         
+        console.log('Camera access granted. Stream tracks:', stream.getTracks().map(t => `${t.kind}: ${t.label}`));
         streamRef.current = stream;
         
         if (userVideoRef.current) {
@@ -59,10 +82,11 @@ function VideoChat() {
 
         qualityManagerRef.current = new AdaptiveQualityManager();
         videoModeratorRef.current = new VideoModerator();
+        console.log('Camera initialized successfully');
       } catch (error) {
-        console.error('Error accessing camera:', error);
+        console.error('Camera initialization failed:', error.name, error.message);
         
-        let errorMessage = 'Please allow camera & mic access to use video chat.';
+        let errorMessage = 'Unable to access camera and microphone.';
         
         if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
           errorMessage = 'Camera and microphone access was denied. Please allow permissions in your browser settings and refresh the page.';
@@ -70,6 +94,10 @@ function VideoChat() {
           errorMessage = 'No camera or microphone found. Please connect a camera and microphone to use video chat.';
         } else if (error.name === 'NotReadableError') {
           errorMessage = 'Camera or microphone is already in use by another application. Please close other apps and try again.';
+        } else if (error.name === 'OverconstrainedError') {
+          errorMessage = 'Your camera does not support the requested video quality. Trying lower quality...';
+        } else if (error.name === 'TypeError') {
+          errorMessage = 'Camera access blocked. Make sure you are using HTTPS or localhost.';
         }
         
         setCameraError(errorMessage);
@@ -150,6 +178,13 @@ function VideoChat() {
         console.error('No local stream available');
         return;
       }
+
+      const tracks = streamRef.current.getTracks();
+      if (!tracks || tracks.length === 0) {
+        console.error('Stream has no tracks available');
+        return;
+      }
+      console.log(`Local stream has ${tracks.length} tracks:`, tracks.map(t => `${t.kind} (${t.label})`));
 
       const isInitiator = socket.id > strangerId;
       
@@ -500,7 +535,17 @@ function VideoChat() {
       setMessages(prev => [...prev, { text: 'Reconnected successfully!', sender: 'system' }]);
     });
 
-    socket.emit('start-matching');
+    const waitForStreamAndMatch = () => {
+      if (streamRef.current && streamRef.current.getTracks().length > 0) {
+        console.log('Camera ready, starting matching with tracks:', streamRef.current.getTracks().map(t => t.kind));
+        socket.emit('start-matching');
+      } else {
+        console.log('Waiting for camera stream to be ready...');
+        setTimeout(waitForStreamAndMatch, 100);
+      }
+    };
+    
+    waitForStreamAndMatch();
 
     return () => {
       setIsTyping(false);
