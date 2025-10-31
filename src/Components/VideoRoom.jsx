@@ -21,6 +21,7 @@ function VideoChat() {
   const [moderationWarning, setModerationWarning] = useState(null);
   const [isTyping, setIsTyping] = useState(false);
   const [cameraError, setCameraError] = useState(null);
+  const [showConnectedMsg, setShowConnectedMsg] = useState(false);
   const navigate = useNavigate();
   const userVideoRef = useRef(null);
   const strangerVideoRef = useRef(null);
@@ -152,8 +153,10 @@ function VideoChat() {
 
       const isInitiator = socket.id > strangerId;
       
-      const turnServers = [
+      const iceServerSets = [
         [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
           {
             urls: 'turn:openrelay.metered.ca:80',
             username: 'openrelayproject',
@@ -171,6 +174,8 @@ function VideoChat() {
           }
         ],
         [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' },
           {
             urls: 'turn:openrelay.metered.ca:80',
             username: 'openrelayproject',
@@ -183,6 +188,9 @@ function VideoChat() {
           }
         ],
         [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun3.l.google.com:19302' },
+          { urls: 'stun:stun4.l.google.com:19302' },
           {
             urls: 'turn:openrelay.metered.ca:443',
             username: 'openrelayproject',
@@ -191,16 +199,16 @@ function VideoChat() {
         ]
       ];
 
-      const currentTurnSet = turnServers[Math.min(retryCount, turnServers.length - 1)];
-      console.log(`Creating peer connection (attempt ${retryCount + 1}) with TURN relay servers (IP privacy protected):`, currentTurnSet);
+      const currentIceServers = iceServerSets[Math.min(retryCount, iceServerSets.length - 1)];
+      console.log(`Creating peer connection (attempt ${retryCount + 1}) with ICE servers:`, currentIceServers);
 
       const peer = new SimplePeer({
         initiator: isInitiator,
         trickle: true,
         stream: streamRef.current,
         config: {
-          iceServers: currentTurnSet,
-          iceTransportPolicy: 'relay',
+          iceServers: currentIceServers,
+          iceTransportPolicy: 'all',
           iceCandidatePoolSize: 10
         }
       });
@@ -212,10 +220,7 @@ function VideoChat() {
           console.warn('Peer connection timeout after 10 seconds');
           
           if (retryCount < 2) {
-            setMessages(prev => [...prev, { 
-              text: `Connection attempt ${retryCount + 1} failed. Retrying with alternate servers...`, 
-              sender: 'system' 
-            }]);
+            console.log(`Retrying connection (attempt ${retryCount + 2})...`);
             
             peer.destroy();
             peerRef.current = null;
@@ -227,7 +232,7 @@ function VideoChat() {
             }, 1000);
           } else {
             setMessages(prev => [...prev, { 
-              text: 'Unable to establish connection after multiple attempts. Trying new partner...', 
+              text: 'Unable to establish video connection. Finding new partner...', 
               sender: 'system' 
             }]);
             peer.destroy();
@@ -302,13 +307,6 @@ function VideoChat() {
 
       peer.on('error', (err) => {
         console.error('Peer error:', err);
-        
-        if (!isConnected && retryCount < 2) {
-          setMessages(prev => [...prev, { 
-            text: `Connection error: ${err.message}. Retrying...`, 
-            sender: 'system' 
-          }]);
-        }
       });
 
       peer.on('close', () => {
@@ -328,8 +326,13 @@ function VideoChat() {
     socket.on('matched', (data) => {
       setIsSearching(false);
       setIsConnected(true);
+      setShowConnectedMsg(true);
       currentStrangerIdRef.current = data.strangerId;
       connectionRetryCountRef.current = 0;
+      
+      setTimeout(() => {
+        setShowConnectedMsg(false);
+      }, 6000);
       
       createPeerConnection(data.strangerId, 0);
     });
@@ -880,6 +883,14 @@ function VideoChat() {
                 <span className="dot"></span>
                 <span className="dot"></span>
               </span>
+            </div>
+          </div>
+        )}
+
+        {showConnectedMsg && !isSearching && (
+          <div className="connected-message">
+            <div className="connected-text">
+              ✅ Connected! You can now start video.
             </div>
           </div>
         )}
