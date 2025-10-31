@@ -117,6 +117,13 @@ class SocketState {
     this.blockedIPs.add(ip);
   }
 
+  loadBlockedIPsFromDatabase(blockedIPsList) {
+    blockedIPsList.forEach(entry => {
+      this.blockedIPs.add(entry.ip_address);
+    });
+    console.log(`Loaded ${blockedIPsList.length} blocked IPs into memory`);
+  }
+
   getIPReport(ip) {
     return this.ipReports.get(ip);
   }
