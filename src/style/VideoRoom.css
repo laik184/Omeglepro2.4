@@ -202,6 +202,8 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+  align-items: center;
+  justify-content: center;
 }
 
 .searching-message {
@@ -209,6 +211,54 @@
   color: #999;
   font-size: 16px;
   font-style: italic;
+}
+
+.connecting-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 18px;
+  color: #666;
+}
+
+.connecting-text {
+  font-weight: 500;
+}
+
+.connecting-dots {
+  display: flex;
+  gap: 4px;
+}
+
+.connecting-dots .dot {
+  width: 6px;
+  height: 6px;
+  background-color: #ff6b35;
+  border-radius: 50%;
+  animation: connecting-bounce 1.4s ease-in-out infinite;
+}
+
+.connecting-dots .dot:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.connecting-dots .dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.connecting-dots .dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes connecting-bounce {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.5;
+  }
+  30% {
+    transform: translateY(-10px);
+    opacity: 1;
+  }
 }
 
 .video-input-section {
