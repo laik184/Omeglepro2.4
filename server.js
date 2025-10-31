@@ -1,9 +1,10 @@
-// ✅ Imports
+ // ✅ Imports
 import express from "express";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import path from "path";
 import { fileURLToPath } from "url";
+import { WebSocketServer } from 'ws';
 
 const app = express();
 const httpServer = createServer(app);
@@ -30,12 +31,19 @@ const io = new Server(httpServer, {
   pingInterval: 25000
 });
 
+// ✅ WebSocket Server Setup (for raw WebSocket connections if needed)
+const wss = new WebSocketServer({ 
+  server: httpServer,
+  path: '/ws' // Different path to avoid conflicts
+});
+
 // ✅ Data Stores
 const rooms = { text: new Set(), video: new Set() };
 const textQueue = [];
 const collegeQueue = [];
 const pairings = new Map();
 const userProfiles = new Map();
+const wsConnections = new Map(); // For raw WebSocket connections
 
 // ✅ Helper: Calculate Common Interests
 function calculateCommonInterests(interests1, interests2) {
@@ -133,11 +141,43 @@ function disconnectPair(socketId) {
   }
   ["text", "video"].forEach((r) => rooms[r].delete(socketId));
   userProfiles.delete(socketId);
+  wsConnections.delete(socketId);
 }
 
-// ✅ Socket Events
+// ✅ Handle raw WebSocket messages
+function handleWebSocketMessage(socketId, message) {
+  try {
+    const data = JSON.parse(message);
+    const partnerId = pairings.get(socketId);
+    
+    if (data.type === 'webrtc-signal' && partnerId) {
+      // Forward to partner via Socket.IO
+      const partnerSocket = io.sockets.sockets.get(partnerId);
+      if (partnerSocket) {
+        partnerSocket.emit("webrtc-signal", {
+          signal: data.signal,
+          from: socketId
+        });
+      }
+      
+      // Also forward to partner via raw WebSocket if they're using it
+      const partnerWS = wsConnections.get(partnerId);
+      if (partnerWS && partnerWS.readyState === partnerWS.OPEN) {
+        partnerWS.send(JSON.stringify({
+          type: 'webrtc-signal',
+          signal: data.signal,
+          from: socketId
+        }));
+      }
+    }
+  } catch (error) {
+    console.error('Error handling WebSocket message:', error);
+  }
+}
+
+// ✅ Socket.IO Events
 io.on("connection", (socket) => {
-  console.log("User connected:", socket.id);
+  console.log("User connected via Socket.IO:", socket.id);
 
   socket.on("join-room", (data) => {
     const roomType = typeof data === "string" ? data : data.roomType;
@@ -172,10 +212,19 @@ io.on("connection", (socket) => {
           signal: data.signal,
           from: socket.id
         });
-        console.log(
-          `WebRTC signal forwarded from ${socket.id} → ${partnerId}`
-        );
       }
+      
+      // Also forward to partner via raw WebSocket if they're using it
+      const partnerWS = wsConnections.get(partnerId);
+      if (partnerWS && partnerWS.readyState === partnerWS.OPEN) {
+        partnerWS.send(JSON.stringify({
+          type: 'webrtc-signal',
+          signal: data.signal,
+          from: socket.id
+        }));
+      }
+      
+      console.log(`WebRTC signal forwarded from ${socket.id} → ${partnerId}`);
     }
   });
 
@@ -195,13 +244,38 @@ io.on("connection", (socket) => {
   });
 
   socket.on("disconnect", () => {
-    console.log(`User ${socket.id} disconnected`);
+    console.log(`User ${socket.id} disconnected (Socket.IO)`);
     disconnectPair(socket.id);
   });
 });
 
-// ✅ Start Server
+// ✅ Raw WebSocket Server Events
+wss.on('connection', (ws, req) => {
+  const socketId = `ws_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  console.log("User connected via raw WebSocket:", socketId);
+  
+  wsConnections.set(socketId, ws);
+  
+  ws.on('message', (message) => {
+    handleWebSocketMessage(socketId, message.toString());
+  });
+  
+  ws.on('close', () => {
+    console.log(`User ${socketId} disconnected (WebSocket)`);
+    disconnectPair(socketId);
+  });
+  
+  ws.on('error', (error) => {
+    console.error(`WebSocket error for ${socketId}:`, error);
+    disconnectPair(socketId);
+  });
+});
+
+// ✅ Start Single Server
 const PORT = process.env.PORT || 5000;
 httpServer.listen(PORT, "0.0.0.0", () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`Consolidated server running on port ${PORT}`);
+  console.log(`- Express serving static files from /dist`);
+  console.log(`- Socket.IO available on /socket.io/`);
+  console.log(`- Raw WebSocket available on /ws`);
 });
