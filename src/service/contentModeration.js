@@ -1,3 +1,5 @@
+import database from '../../server/database/db.js';
+
 const moderationPatterns = {
   spam: [
     /(.)\1{10,}/gi,
@@ -21,7 +23,6 @@ const moderationPatterns = {
 
 const messageHistory = new Map();
 const userViolations = new Map();
-const blockedIPs = new Set();
 const ipToSocketMap = new Map();
 
 const VIOLATION_THRESHOLD = 3;
@@ -33,6 +34,7 @@ class ContentModerator {
   constructor() {
     this.blockedUsers = new Set();
     this.warnings = new Map();
+    this.database = database;
   }
 
   registerUser(userId, ip) {
@@ -45,7 +47,7 @@ class ContentModerator {
 
   checkMessage(userId, message) {
     const userIP = ipToSocketMap.get(userId);
-    if (userIP && blockedIPs.has(userIP)) {
+    if (userIP && this.database.isIPBlocked(userIP)) {
       return {
         allowed: false,
         violations: [{ type: 'BLOCKED', reason: 'User IP is blocked', severity: 'critical' }],
@@ -139,14 +141,26 @@ class ContentModerator {
       timestamp: Date.now()
     });
 
+    violations.forEach(violation => {
+      if (userIP) {
+        this.database.logViolation(
+          userId, 
+          userIP, 
+          violation.type, 
+          violation.reason, 
+          violation.severity
+        );
+      }
+    });
+
     const criticalViolations = violations.filter(v => v.severity === 'critical').length;
     const totalViolations = userViolationList.length;
 
     if (criticalViolations > 0 || totalViolations >= VIOLATION_THRESHOLD) {
       this.blockedUsers.add(userId);
       if (userIP) {
-        blockedIPs.add(userIP);
-        console.log(`IP ${userIP} blocked due to violations`);
+        this.database.blockIP(userIP, 'Content moderation violations', totalViolations);
+        console.log(`IP ${userIP} blocked due to violations (persisted to database)`);
       }
     }
   }
@@ -206,11 +220,11 @@ class ContentModerator {
 
   isUserBlocked(userId) {
     const userIP = ipToSocketMap.get(userId);
-    return this.blockedUsers.has(userId) || (userIP && blockedIPs.has(userIP));
+    return this.blockedUsers.has(userId) || (userIP && this.database.isIPBlocked(userIP));
   }
   
   isIPBlocked(ip) {
-    return blockedIPs.has(ip);
+    return this.database.isIPBlocked(ip);
   }
 
   getUserViolations(userId) {
