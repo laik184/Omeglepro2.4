@@ -134,7 +134,7 @@ function VideoChat() {
       rejectUnauthorized: false
     };
     
-    const socket = io(socketConfig);
+    const socket = io("http://localhost:5000", socketConfig); 
     socketRef.current = socket;
 
     socket.emit('join-room', 'video');
