@@ -2,10 +2,24 @@ import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { registerSocketHandlers } from './server/socket/registerHandlers.js';
+import database from './server/database/db.js';
+import socketState from './server/socket/socketState.js';
 
 const app = express();
 const httpServer = createServer(app);
 const PORT = process.env.WS_PORT || 3001;
+
+database.initializeDatabase();
+
+console.log('Loading blocked IPs from database...');
+const blockedIPs = database.getAllBlockedIPs();
+console.log(`Found ${blockedIPs.length} blocked IPs in database`);
+blockedIPs.forEach(entry => {
+  console.log(`  - ${entry.ip_address} (${entry.report_count} reports, blocked at ${entry.blocked_at})`);
+});
+
+socketState.loadBlockedIPsFromDatabase(blockedIPs);
+console.log('Blocked IPs loaded into memory and will be enforced on new connections');
 
 const io = new Server(httpServer, {
   cors: {
@@ -34,6 +48,10 @@ httpServer.on('error', (error) => {
 });
 
 registerSocketHandlers(io);
+
+setInterval(() => {
+  database.cleanOldData(30);
+}, 24 * 60 * 60 * 1000);
 
 httpServer.listen(PORT, 'localhost', () => {
   console.log(`WebSocket server running on port ${PORT}`);
