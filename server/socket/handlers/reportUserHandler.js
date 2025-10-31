@@ -1,5 +1,6 @@
 import socketState from '../socketState.js';
 import { sendReportEmail } from '../helpers/emailService.js';
+import database from '../../database/db.js';
 
 export function reportUserHandler(socket, io) {
   return async (data) => {
@@ -27,29 +28,31 @@ export function reportUserHandler(socket, io) {
       return;
     }
     
-    if (!socketState.getIPReport(reportedIP)) {
-      socketState.initializeIPReport(reportedIP);
-    }
-    
-    const reportData = socketState.getIPReport(reportedIP);
-    
-    if (reportData.reporters.has(reporterIP)) {
+    if (database.hasReportedIP(reporterIP, reportedIP)) {
       socket.emit('report-failed', { message: 'You have already reported this user.' });
       return;
     }
     
-    reportData.reporters.add(reporterIP);
-    reportData.count += 1;
-    reportData.reasons.push(data.reportReason || 'No reason provided');
+    const reportAdded = database.addReport(reportedIP, reporterIP, data.reportReason || 'No reason provided');
+    
+    if (!reportAdded) {
+      socket.emit('report-failed', { message: 'Failed to submit report. Please try again.' });
+      return;
+    }
+    
     socketState.setReportCooldown(socket.id, now);
     
-    console.log(`User ${partnerId} (${reportedIP}) reported by ${socket.id} (${reporterIP}). Total unique reports: ${reportData.count}`);
+    const reportCount = database.getReportCount(reportedIP);
     
-    await sendReportEmail(reportedIP, data.reportReason, reportData.count);
+    console.log(`User ${partnerId} (${reportedIP}) reported by ${socket.id} (${reporterIP}). Total unique reports: ${reportCount}`);
     
-    if (reportData.count >= 4 && !socketState.isIPBlocked(reportedIP)) {
+    await sendReportEmail(reportedIP, data.reportReason, reportCount);
+    
+    if (reportCount >= 4 && !database.isIPBlocked(reportedIP)) {
+      database.blockIP(reportedIP, data.reportReason || 'Multiple user reports', reportCount);
       socketState.blockIP(reportedIP);
-      console.log(`IP ${reportedIP} has been blocked after ${reportData.count} unique reports`);
+      
+      console.log(`IP ${reportedIP} has been blocked after ${reportCount} unique reports`);
       
       const reportedSocket = io.sockets.sockets.get(partnerId);
       if (reportedSocket) {
