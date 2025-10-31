@@ -23,7 +23,7 @@ app.get("*", (req, res) => {
 // ✅ Socket.io Setup
 const io = new Server(httpServer, {
   cors: {
-    origin: "*", // ⚠️ Replace with frontend URL if needed
+    origin: ["http://localhost:5173"],
     methods: ["GET", "POST"]
   },
   transports: ["websocket", "polling"],
