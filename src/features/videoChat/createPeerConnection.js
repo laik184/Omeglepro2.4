@@ -1,7 +1,9 @@
 import SimplePeer from 'simple-peer';
 
-const TURN_SERVER_SETS = [
+const ICE_SERVER_SETS = [
   [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
     {
       urls: 'turn:openrelay.metered.ca:80',
       username: 'openrelayproject',
@@ -19,6 +21,8 @@ const TURN_SERVER_SETS = [
     }
   ],
   [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
     {
       urls: 'turn:openrelay.metered.ca:80',
       username: 'openrelayproject',
@@ -31,6 +35,9 @@ const TURN_SERVER_SETS = [
     }
   ],
   [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' },
     {
       urls: 'turn:openrelay.metered.ca:443',
       username: 'openrelayproject',
@@ -53,16 +60,16 @@ export function createPeerConnection(config) {
     connectionTimeout = 10000
   } = config;
 
-  const currentTurnSet = TURN_SERVER_SETS[Math.min(retryCount, TURN_SERVER_SETS.length - 1)];
-  console.log(`Creating peer connection (attempt ${retryCount + 1}/${maxRetries + 1}) with TURN relay servers (IP privacy protected):`, currentTurnSet);
+  const currentIceServers = ICE_SERVER_SETS[Math.min(retryCount, ICE_SERVER_SETS.length - 1)];
+  console.log(`Creating peer connection (attempt ${retryCount + 1}/${maxRetries + 1}) with ICE servers:`, currentIceServers);
 
   const peer = new SimplePeer({
     initiator: isInitiator,
     trickle: true,
     stream: stream,
     config: {
-      iceServers: currentTurnSet,
-      iceTransportPolicy: 'relay',
+      iceServers: currentIceServers,
+      iceTransportPolicy: 'all',
       iceCandidatePoolSize: 10
     }
   });
