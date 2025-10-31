@@ -10,7 +10,12 @@ export function cleanupPeerConnection(
     peerRef.current = null;
   }
 
-  if (strangerVideoRef.current) {
+  if (strangerVideoRef.current && strangerVideoRef.current.srcObject) {
+    const stream = strangerVideoRef.current.srcObject;
+    stream.getTracks().forEach(track => {
+      track.stop();
+      console.log('Stopped remote media track during cleanup:', track.kind);
+    });
     strangerVideoRef.current.srcObject = null;
   }
 
@@ -25,5 +30,5 @@ export function cleanupPeerConnection(
     }
   }
 
-  console.log('Peer connection cleaned up');
+  console.log('Peer connection and all media tracks cleaned up');
 }
