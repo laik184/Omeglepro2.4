@@ -2,7 +2,7 @@ import { spawn } from 'child_process';
 
 console.log('Starting Omegle Web application...');
 
-const wsServer = spawn('node', ['websocket-server.js'], {
+const wsServer = spawn('node', ['server.js'], {
   stdio: 'inherit',
   shell: false
 });
