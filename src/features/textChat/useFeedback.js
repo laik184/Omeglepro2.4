@@ -1,62 +1,26 @@
-// ✅ useMatchControls.js — Final Stable Version
-export function createMatchControls(
-  socketRef,
-  isConnected,
-  isSearching,
-  setMessages,
-  setIsSearching,
-  setIsConnected,
-  setStrangerTyping,
-  roomType = "text",
-  onReset = null
-) {
-  let isCooldown = false;
+// Feedback handler for text chat
+export function createFeedbackHandler(socketRef, setFeedback, setShowModal) {
+  const handleFeedbackSubmit = () => {
+    if (!socketRef?.current) {
+      console.warn("[Feedback] Socket not ready");
+      return;
+    }
 
-  const handleNewOrSkip = () => {
-    try {
-      if (!socketRef?.current) {
-        console.warn("[Match] Socket not ready");
-        return;
+    const feedbackText = typeof setFeedback === 'function' ? null : setFeedback;
+    
+    if (feedbackText && feedbackText.trim()) {
+      socketRef.current.emit('submit-feedback', { feedback: feedbackText });
+      if (typeof setFeedback === 'function') {
+        setFeedback('');
       }
-
-      // ⏱️ Prevent multiple clicks
-      if (isCooldown) {
-        console.log("[Match] Please wait...");
-        return;
+      if (typeof setShowModal === 'function') {
+        setShowModal(false);
       }
-      isCooldown = true;
-      setTimeout(() => (isCooldown = false), 1500);
-
-      // 🧹 Reset UI state
-      setMessages([]);
-      setIsConnected(false);
-      setStrangerTyping(false);
-
-      // 🔁 CASE 1: Connected → Skip current stranger
-      if (isConnected) {
-        socketRef.current.emit("skip-stranger", { roomType });
-        setIsSearching(true);
-        console.log("[Match] Skipped stranger, searching new...");
-      }
-      // 🚫 CASE 2: Already searching → Stop search
-      else if (isSearching) {
-        socketRef.current.emit("leave-room", roomType);
-        setIsSearching(false);
-        console.log("[Match] Stopped searching for partner.");
-      }
-      // 🚀 CASE 3: Idle → Start new search
-      else {
-        setIsSearching(true);
-        socketRef.current.emit("start-matching", { roomType });
-        console.log("[Match] Started searching for new stranger...");
-      }
-
-      // 🧩 Optional reset callback
-      if (typeof onReset === "function") onReset();
-    } catch (err) {
-      console.error("[Match] Error in handleNewOrSkip:", err);
+      console.log("[Feedback] Submitted successfully");
+    } else {
+      console.warn("[Feedback] Empty feedback text");
     }
   };
 
-  return { handleNewOrSkip };
+  return { handleFeedbackSubmit };
 }
