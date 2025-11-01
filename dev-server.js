@@ -1,7 +1,7 @@
 import { spawn } from 'child_process';
 
 // Start the WebSocket server
-const wsServer = spawn('node', ['websocket-server.js'], {
+const wsServer = spawn('node', ['server.js'], {
   stdio: 'inherit',
   shell: true
 });
