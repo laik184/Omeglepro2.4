@@ -1,98 +1,78 @@
-import { useEffect, useRef } from 'react';
-import { io } from 'socket.io-client';
+// ✅ useSocketConnection.js — Final Optimized Version (Text Chat)
+import { useEffect, useRef } from "react";
+import { io } from "socket.io-client";
 
-export function useSocketConnection(callbacks) {
+export function useSocketConnection(callbacks = {}, roomType = "text") {
   const socketRef = useRef(null);
 
   useEffect(() => {
-    const socket = io({
-      transports: ['websocket', 'polling']
+    // ⚙️ Replace this with your actual backend server URL
+    const SERVER_URL = "https://your-server-url.com";
+
+    const socket = io(SERVER_URL, {
+      transports: ["websocket"],
+      reconnection: true,
+      reconnectionAttempts: 10,
+      reconnectionDelay: 1000,
     });
+
     socketRef.current = socket;
 
-    socket.emit('join-room', 'text');
+    // ✅ Connection Events
+    socket.on("connect", () => {
+      console.log("[Socket] Connected:", socket.id);
+      socket.emit("join-room", roomType);
+      socket.emit("start-matching");
+      callbacks.onConnected?.();
+    });
 
-    if (callbacks.onUserCount) {
-      socket.on('user-count', callbacks.onUserCount);
-    }
+    socket.on("disconnect", (reason) => {
+      console.warn("[Socket] Disconnected:", reason);
+      callbacks.onDisconnected?.(reason);
+    });
 
-    if (callbacks.onSearching) {
-      socket.on('searching', callbacks.onSearching);
-    }
+    socket.on("connect_error", (error) => {
+      console.error("[Socket] Connection error:", error.message);
+      callbacks.onConnectError?.(error);
+    });
 
-    if (callbacks.onMatched) {
-      socket.on('matched', callbacks.onMatched);
-    }
+    socket.on("reconnect", (attempt) => {
+      console.log(`[Socket] Reconnected after ${attempt} attempts`);
+      callbacks.onReconnect?.(attempt);
+    });
 
-    if (callbacks.onReceiveMessage) {
-      socket.on('receive-message', callbacks.onReceiveMessage);
-    }
+    // ✅ Dynamic Event Registration
+    const events = {
+      "user-count": "onUserCount",
+      searching: "onSearching",
+      matched: "onMatched",
+      "receive-message": "onReceiveMessage",
+      "stranger-typing": "onStrangerTyping",
+      "stranger-stop-typing": "onStrangerStopTyping",
+      "stranger-disconnected": "onStrangerDisconnected",
+      "you-disconnected": "onYouDisconnected",
+      blocked: "onBlocked",
+      "feedback-received": "onFeedbackReceived",
+      "report-success": "onReportSuccess",
+      "report-failed": "onReportFailed",
+      "message-delivered": "onMessageDelivered",
+      "message-rate-limited": "onMessageRateLimited",
+      "connection-error": "onConnectionError",
+    };
 
-    if (callbacks.onStrangerTyping) {
-      socket.on('stranger-typing', callbacks.onStrangerTyping);
-    }
-
-    if (callbacks.onStrangerStopTyping) {
-      socket.on('stranger-stop-typing', callbacks.onStrangerStopTyping);
-    }
-
-    if (callbacks.onStrangerDisconnected) {
-      socket.on('stranger-disconnected', callbacks.onStrangerDisconnected);
-    }
-
-    if (callbacks.onYouDisconnected) {
-      socket.on('you-disconnected', callbacks.onYouDisconnected);
-    }
-
-    if (callbacks.onBlocked) {
-      socket.on('blocked', callbacks.onBlocked);
-    }
-
-    if (callbacks.onFeedbackReceived) {
-      socket.on('feedback-received', callbacks.onFeedbackReceived);
-    }
-
-    if (callbacks.onReportSuccess) {
-      socket.on('report-success', callbacks.onReportSuccess);
-    }
-
-    if (callbacks.onReportFailed) {
-      socket.on('report-failed', callbacks.onReportFailed);
-    }
-
-    if (callbacks.onMessageDelivered) {
-      socket.on('message-delivered', callbacks.onMessageDelivered);
-    }
-
-    if (callbacks.onMessageRateLimited) {
-      socket.on('message-rate-limited', callbacks.onMessageRateLimited);
-    }
-
-    if (callbacks.onConnectionError) {
-      socket.on('connection-error', callbacks.onConnectionError);
-    }
-
-    socket.on('connect_error', (error) => {
-      console.error('Socket connection error:', error);
-      if (callbacks.onConnectError) {
-        callbacks.onConnectError(error);
+    Object.entries(events).forEach(([event, handler]) => {
+      if (callbacks[handler]) {
+        socket.on(event, callbacks[handler]);
       }
     });
 
-    socket.on('reconnect', (attemptNumber) => {
-      console.log(`Reconnected after ${attemptNumber} attempts`);
-      if (callbacks.onReconnect) {
-        callbacks.onReconnect(attemptNumber);
-      }
-    });
-
-    socket.emit('start-matching');
-
+    // ✅ Cleanup on unmount
     return () => {
-      socket.emit('leave-room', 'text');
+      console.log("[Socket] Cleaning up...");
+      socket.emit("leave-room", roomType);
       socket.disconnect();
     };
-  }, []);
+  }, [roomType]);
 
   return socketRef;
 }
