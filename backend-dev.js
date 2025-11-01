@@ -1,23 +1,12 @@
 import express from "express";
 import { createServer } from "http";
 import { Server } from "socket.io";
-import path from "path";
-import { fileURLToPath } from "url";
 import { registerSocketHandlers } from './server/socket/registerHandlers.js';
 import db from './server/database/db.js';
 import socketState from './server/socket/socketState.js';
 
 const app = express();
 const httpServer = createServer(app);
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-app.use(express.static(path.join(__dirname, "dist")));
-
-app.get("*", (req, res) => {
-  res.sendFile(path.join(__dirname, "dist", "index.html"));
-});
 
 const io = new Server(httpServer, {
   cors: {
@@ -38,12 +27,11 @@ socketState.loadBlockedIPsFromDatabase(blockedIPs);
 
 registerSocketHandlers(io);
 
-const PORT = process.env.PORT || 5000;
-httpServer.listen(PORT, "0.0.0.0", () => {
-  console.log(`Production server running on port ${PORT}`);
-  console.log(`- Serving static files from /dist`);
-  console.log(`- Socket.IO handlers registered`);
+const PORT = 3001;
+httpServer.listen(PORT, "localhost", () => {
+  console.log(`Backend Socket.IO server running on http://localhost:${PORT}`);
   console.log(`- Database initialized`);
+  console.log(`- Socket.IO handlers registered`);
   console.log(`- Loaded ${blockedIPs.length} blocked IPs`);
 });
 
