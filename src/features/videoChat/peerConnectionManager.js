@@ -1,194 +1,132 @@
-import SimplePeer from 'simple-peer';
-import { setupQualityMonitoring, setupVideoModeration } from './qualityModeration.js';
+// ✅ peerConnectionManager.js — Fixed & Stable Version
+import SimplePeer from "simple-peer";
 
-const ICE_SERVER_SETS = [
-  [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    {
-      urls: 'turn:openrelay.metered.ca:80',
-      username: 'openrelayproject',
-      credential: 'openrelayproject'
-    },
-    {
-      urls: 'turn:openrelay.metered.ca:443',
-      username: 'openrelayproject',
-      credential: 'openrelayproject'
-    },
-    {
-      urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-      username: 'openrelayproject',
-      credential: 'openrelayproject'
+// Peer reference (so other modules can access/close it)
+let peerRef = null;
+let connectionTimeoutRef = null;
+
+/**
+ * Create a new WebRTC peer connection using SimplePeer
+ * @param {Object} params - Connection setup parameters
+ * @param {Object} params.socket - active Socket.IO instance
+ * @param {string} params.strangerId - ID of the remote peer
+ * @param {MediaStream} params.localStream - User's camera/mic stream
+ * @param {Object} params.remoteVideoRef - React ref for stranger's video element
+ * @param {Function} params.onConnected - callback on successful connection
+ * @param {Function} params.onDisconnected - callback on disconnect
+ * @param {number} [params.retryCount=0] - for retry logic
+ */
+export function createPeerConnectionManager({
+  socket,
+  strangerId,
+  localStream,
+  remoteVideoRef,
+  onConnected,
+  onDisconnected,
+  retryCount = 0,
+}) {
+  console.log("[WebRTC] Creating peer connection...");
+
+  // Determine initiator (simple fallback logic)
+  const isInitiator = socket.id > strangerId;
+
+  // TURN / STUN configuration
+  const iceServers = [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "turn:global.turn.metered.ca:80", username: "demo", credential: "demo" },
+  ];
+
+  // Create peer instance
+  peerRef = new SimplePeer({
+    initiator: isInitiator,
+    trickle: true,
+    stream: localStream,
+    config: { iceServers },
+  });
+
+  // Send offer/answer/candidate to backend
+  peerRef.on("signal", (signal) => {
+    socket.emit("webrtc-signal", { target: strangerId, signal });
+  });
+
+  // Remote stream received
+  peerRef.on("stream", (remoteStream) => {
+    console.log("[WebRTC] Remote stream received");
+    if (remoteVideoRef?.current) {
+      remoteVideoRef.current.srcObject = remoteStream;
     }
-  ],
-  [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
-    {
-      urls: 'turn:openrelay.metered.ca:80',
-      username: 'openrelayproject',
-      credential: 'openrelayproject'
-    },
-    {
-      urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-      username: 'openrelayproject',
-      credential: 'openrelayproject'
+    clearTimeout(connectionTimeoutRef);
+    onConnected?.();
+  });
+
+  // Connection established
+  peerRef.on("connect", () => {
+    console.log("[WebRTC] Peer connection established");
+    clearTimeout(connectionTimeoutRef);
+    onConnected?.();
+  });
+
+  // Handle peer close / disconnect
+  peerRef.on("close", () => {
+    console.warn("[WebRTC] Peer connection closed");
+    cleanupPeer();
+    onDisconnected?.();
+  });
+
+  // Handle errors
+  peerRef.on("error", (err) => {
+    console.error("[WebRTC] Error:", err.message);
+    cleanupPeer();
+    if (retryCount < 2) {
+      console.log("[WebRTC] Retrying connection...");
+      setTimeout(() => {
+        createPeerConnectionManager({
+          socket,
+          strangerId,
+          localStream,
+          remoteVideoRef,
+          onConnected,
+          onDisconnected,
+          retryCount: retryCount + 1,
+        });
+      }, 1500);
+    } else {
+      console.error("[WebRTC] Max retry reached. Closing peer.");
+      onDisconnected?.();
     }
-  ],
-  [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun3.l.google.com:19302' },
-    { urls: 'stun:stun4.l.google.com:19302' },
-    {
-      urls: 'turn:openrelay.metered.ca:443',
-      username: 'openrelayproject',
-      credential: 'openrelayproject'
+  });
+
+  // Connection timeout fallback
+  connectionTimeoutRef = setTimeout(() => {
+    if (!peerRef.connected) {
+      console.warn("[WebRTC] Connection timeout. Closing peer.");
+      cleanupPeer();
+      onDisconnected?.();
     }
-  ]
-];
+  }, 15000);
+}
 
-export function createPeerConnectionManager(config) {
-  const {
-    socketRef,
-    peerRef,
-    streamRef,
-    strangerVideoRef,
-    qualityManagerRef,
-    videoModeratorRef,
-    connectionTimeoutRef,
-    currentStrangerIdRef,
-    connectionRetryCountRef,
-    setMessages,
-    setVideoQuality,
-    setModerationWarning,
-    onHandleNewOrSkip
-  } = config;
-
-  const createPeerConnection = (strangerId, retryCount = 0) => {
-    if (connectionTimeoutRef.current) {
-      clearTimeout(connectionTimeoutRef.current);
+// Handle incoming signal from socket
+export function handleIncomingSignal(signalData) {
+  if (peerRef) {
+    try {
+      peerRef.signal(signalData.signal);
+    } catch (err) {
+      console.error("[WebRTC] Signal error:", err);
     }
+  }
+}
 
-    if (!streamRef.current) {
-      console.error('No local stream available');
-      return;
+// Cleanup peer connection safely
+export function cleanupPeer() {
+  if (peerRef) {
+    try {
+      peerRef.destroy();
+      peerRef = null;
+      console.log("[WebRTC] Peer destroyed");
+    } catch (err) {
+      console.warn("[WebRTC] Cleanup error:", err);
     }
-
-    const tracks = streamRef.current.getTracks();
-    if (!tracks || tracks.length === 0) {
-      console.error('Stream has no tracks available');
-      return;
-    }
-    console.log(`Local stream has ${tracks.length} tracks:`, tracks.map(t => `${t.kind} (${t.label})`));
-
-    const isInitiator = socketRef.current.id > strangerId;
-    const currentIceServers = ICE_SERVER_SETS[Math.min(retryCount, ICE_SERVER_SETS.length - 1)];
-    console.log(`Creating peer connection (attempt ${retryCount + 1}) with ICE servers:`, currentIceServers);
-
-    const peer = new SimplePeer({
-      initiator: isInitiator,
-      trickle: true,
-      stream: streamRef.current,
-      config: {
-        iceServers: currentIceServers,
-        iceTransportPolicy: 'all',
-        iceCandidatePoolSize: 10
-      }
-    });
-
-    let isConnected = false;
-
-    connectionTimeoutRef.current = setTimeout(() => {
-      if (!isConnected && peerRef.current === peer) {
-        console.warn('Peer connection timeout after 10 seconds');
-        
-        if (retryCount < 2) {
-          console.log(`Retrying connection (attempt ${retryCount + 2})...`);
-          
-          peer.destroy();
-          peerRef.current = null;
-          
-          setTimeout(() => {
-            if (currentStrangerIdRef.current === strangerId) {
-              createPeerConnection(strangerId, retryCount + 1);
-            }
-          }, 1000);
-        } else {
-          setMessages(prev => [...prev, { 
-            text: 'Unable to establish video connection. Finding new partner...', 
-            sender: 'system' 
-          }]);
-          peer.destroy();
-          peerRef.current = null;
-          
-          if (socketRef.current) {
-            socketRef.current.emit('skip-stranger');
-          }
-        }
-      }
-    }, 10000);
-
-    peer.on('signal', (signal) => {
-      socketRef.current.emit('webrtc-signal', { signal });
-    });
-
-    peer.on('connect', () => {
-      isConnected = true;
-      console.log('Peer connection established successfully');
-      connectionRetryCountRef.current = 0;
-      
-      if (connectionTimeoutRef.current) {
-        clearTimeout(connectionTimeoutRef.current);
-        connectionTimeoutRef.current = null;
-      }
-    });
-
-    peer.on('stream', (remoteStream) => {
-      isConnected = true;
-      
-      if (connectionTimeoutRef.current) {
-        clearTimeout(connectionTimeoutRef.current);
-        connectionTimeoutRef.current = null;
-      }
-      
-      if (strangerVideoRef.current) {
-        strangerVideoRef.current.srcObject = remoteStream;
-        console.log('Received remote stream');
-
-        setupQualityMonitoring(
-          peer,
-          streamRef,
-          qualityManagerRef,
-          setVideoQuality
-        );
-
-        setupVideoModeration(
-          strangerVideoRef,
-          videoModeratorRef,
-          socketRef,
-          setModerationWarning,
-          onHandleNewOrSkip
-        );
-      }
-    });
-
-    peer.on('error', (err) => {
-      console.error('Peer error:', err);
-    });
-
-    peer.on('close', () => {
-      console.log('Peer connection closed');
-      
-      if (connectionTimeoutRef.current) {
-        clearTimeout(connectionTimeoutRef.current);
-        connectionTimeoutRef.current = null;
-      }
-    });
-
-    peerRef.current = peer;
-    connectionRetryCountRef.current = retryCount;
-    console.log(`WebRTC peer created. I am ${isInitiator ? 'initiator' : 'responder'}`);
-  };
-
-  return createPeerConnection;
+  }
+  clearTimeout(connectionTimeoutRef);
 }
